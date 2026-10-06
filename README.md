@@ -68,4 +68,10 @@ npm run build
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
+- 刀具报废只有一个实现：`frontend/src/api/cutter-scrap.ts` 的 `scrapCutters()`。批量勾选、单把报废、
+  以及其他模块走 `runAction('cutter', id, '报废刀具')` 的入口全部汇到这一段；整组校验有一把不合格就全组退回，
+  状态、更换日期、报废原因同一次写入，并与掘进环次的待换刀具清单在同一次 `saveModules` 里落库，
+  写不进去或回读核对不通过都整体撤销。报废权限只认本工区机械员（角色在页面右上角可切换，用于演示拦截）。
+- 刀具磨损上限全平台统一按 `cutter-scrap.ts` 里的 `CUTTER_WEAR_LIMIT_MM`（20mm）算；历史记录里非数值的
+  磨损量解析为空，不参与超限判断。报废逻辑的行为冒烟测试：`cd frontend && npm run test:smoke`。
 - 想回到初始数据：清掉浏览器里 `shield-tunnel-construction:entries` 这一项，或调用 `resetModule(模块)`。

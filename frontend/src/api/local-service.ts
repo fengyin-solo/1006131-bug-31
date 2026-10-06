@@ -1,6 +1,9 @@
 import { MODULE_BY_KEY } from '@/data/modules'
-import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import { allRows, listRows, resetRows, saveModules, saveRows } from '@/data/local-store'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
+import { buildRingPendingSync, scrapCutters } from '@/api/cutter-scrap'
+import type { ScrapOperator } from '@/api/cutter-scrap'
+import { useSessionStore } from '@/stores/session'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
@@ -28,11 +31,30 @@ export function listEntries(key: string, filters: Record<string, string> = {}): 
   return { items: matched, total: matched.length, page: 1, size: matched.length }
 }
 
+// 报废刀具没有第二个入口：不管谁调 runAction，都并进批量报废那同一段逻辑。
+// 操作人从会话里取，取不到就按未登记处理，权限校验自然会拦下。
+function currentOperator(): ScrapOperator {
+  try {
+    const session = useSessionStore()
+    return { name: session.operator, role: session.role, workArea: session.workArea }
+  } catch {
+    return { name: '未登记', role: '', workArea: '' }
+  }
+}
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
 export function runAction(key: string, id: number, action: string): ActionResult {
   const meta = moduleMeta(key)
   const target = meta.actionTargets[action]
   if (!target) {
     return { ok: false, message: `${meta.entity}没有登记「${action}」这个动作` }
+  }
+  if (key === 'cutter' && action === '报废刀具') {
+    const outcome = scrapCutters([id], { scrapDate: todayIso(), reason: '单把报废（台账入口）' }, currentOperator())
+    return { ok: outcome.ok, message: outcome.message }
   }
   const rows = listRows(key)
   const index = rows.findIndex((row) => Number(row.id) === id)
@@ -52,7 +74,13 @@ export function runAction(key: string, id: number, action: string): ActionResult
   }
   const next = [...rows]
   next[index] = updated
-  saveRows(key, next)
+  if (key === 'cutter') {
+    // 刀具台账一动，掘进环次的待换刀具清单就在同一次写入里重算，两处数量才总对得上。
+    const ringSync = buildRingPendingSync(next, listRows('ring'))
+    saveModules({ cutter: next, ring: ringSync.rows })
+  } else {
+    saveRows(key, next)
+  }
   return { ok: true, message: `${meta.entity}已${action}，当前状态「${target}」` }
 }
 

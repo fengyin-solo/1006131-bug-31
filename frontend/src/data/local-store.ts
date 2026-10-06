@@ -41,10 +41,34 @@ export function listRows(key: string): EntryRow[] {
 }
 
 export function saveRows(key: string, rows: EntryRow[]): void {
-  const next = { ...allRows(), [key]: rows }
-  cache = next
+  saveModules({ [key]: rows })
+}
+
+// 多模块一次写入：整个 storage 只有一个键，setItem 要么全成要么全不成，
+// 所以跨模块的改动（比如刀具报废 + 掘进环次待换清单）不会写一半。
+// setItem 抛错时 cache 不切换，内存里还是旧数据，等于整体撤销。
+export function saveModules(patch: Record<string, EntryRow[]>): void {
+  const next = { ...allRows(), ...patch }
   if (typeof window !== 'undefined' && window.localStorage) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+  }
+  cache = next
+}
+
+export function snapshotRows(): Record<string, EntryRow[]> {
+  return clone(allRows())
+}
+
+// 写入后核对不通过时整体回滚到快照；localStorage 写不进去也只能尽量恢复内存态。
+export function restoreRows(snapshot: Record<string, EntryRow[]>): void {
+  const next = clone(snapshot)
+  cache = next
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+    } catch {
+      // 撤销本身也写不进去时，至少内存态已经回到快照，页面重载前数据一致。
+    }
   }
 }
 
