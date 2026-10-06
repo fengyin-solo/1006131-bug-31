@@ -30,6 +30,14 @@ export function listEntries(key: string, filters: Record<string, string> = {}): 
 
 export function runAction(key: string, id: number, action: string): ActionResult {
   const meta = moduleMeta(key)
+  // 刀具有独立的状态机与权限/原子写实现（src/domain/cutter/service.ts），
+  // 通用入口一律不接刀具写操作，避免再出现「两条写库路子」。
+  if (key === 'cutter') {
+    return {
+      ok: false,
+      message: '刀具状态流转请走刀具页的统一入口（登记检查/安排更换/更换确认/批量报废）',
+    }
+  }
   const target = meta.actionTargets[action]
   if (!target) {
     return { ok: false, message: `${meta.entity}没有登记「${action}」这个动作` }

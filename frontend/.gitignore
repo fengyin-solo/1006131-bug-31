@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# 离线领域测试构建产物（run-tests.cjs 生成）
+.test-build/
+dist-test/
+*.local
